@@ -44,7 +44,7 @@ func GetSwagger() (*openapi3.Swagger, error) {
 type {{.TypeName}} {{.TypeDef}}
 {{end}}
 `,
-	"register.tmpl": `func RegisterHandlers(router codegen.EchoRouter, si ServerInterface) {
+	"register.tmpl": `func RegisterHandlers(router runtime.EchoRouter, si ServerInterface) {
     wrapper := ServerInterfaceWrapper{
         Handler: si,
     }
@@ -96,15 +96,26 @@ type ServerInterface interface {
     Handler ServerInterface
 }
 
-{{range .}}// Wrapper for {{.OperationId}}
+{{range .}}{{$opid := .OperationId}}// Wrapper for {{$opid}}
 func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
     var err error
 {{range .PathParams}}// ------------- Path parameter "{{.ParamName}}" -------------
     var {{.GoName}} {{.TypeDef}}
-    err = codegen.BindStringToObject(ctx.Param("{{.ParamName}}"), &{{.GoName}})
+{{if .IsPassThrough}}
+    {{.GoName}} = ctx.Param("{{.ParamName}}")
+{{end}}
+{{if .IsJson}}
+    err = json.Unmarshal([]byte(ctx.Param("{{.ParamName}}")), &{{.GoName}})
+    if err != nil {
+        return echo.NewHTTPError(http.StatusBadRequest, "Error unmarshaling parameter '{{.ParamName}}' as JSON")
+    }
+{{end}}
+{{if .IsStyled}}
+    err = runtime.BindStyledParameter("{{.Style}}",{{.Explode}}, "{{.ParamName}}", ctx.Param("{{.ParamName}}"), &{{.GoName}})
     if err != nil {
         return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
     }
+{{end}}
 {{end}}
 
 {{if .RequiresParamObject}}
@@ -113,21 +124,17 @@ func (w *ServerInterfaceWrapper) {{.OperationId}} (ctx echo.Context) error {
     var params {{.OperationId}}Params
 {{range .QueryParams}}// ------------- {{if .Required}}Required{{else}}Optional{{end}} query parameter "{{.ParamName}}" -------------
 var {{.GoName}} {{.TypeDef}}
-{{if .Required}}
-    err = codegen.BindStringToObject(ctx.QueryParam("{{.ParamName}}"), &{{.GoName}})
-    if err != nil {
-        return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
-    }
-    params.{{.GoName}} = {{.GoName}}
-{{else}}
-    if ctx.QueryParam("{{.ParamName}}") != "" {
-        err = codegen.BindStringToObject(ctx.QueryParam("{{.ParamName}}"), &{{.GoName}})
+    {{if not .Required}}if paramValue := ctx.QueryParam("{{.ParamName}}"); paramValue != ""{{end}} {
+        {{if .Required}}paramValue := ctx.QueryParam("{{.ParamName}}"){{end}}
+        err = runtime.BindStyledParameter("{{.Style}}",{{.Explode}}, "{{.ParamName}}", paramValue, &{{.GoName}})
         if err != nil {
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
         }
-        params.{{.GoName}} = &{{.GoName}}
-    }{{end}}
+        params.{{.GoName}} = {{if not .Required}}&{{end}}{{.GoName}}
+    }
+
 {{end}}
+
 {{if .HeaderParams}}
     headers := ctx.Request().Header
 {{range .HeaderParams}}// ------------- {{if .Required}}Required{{else}}Optional{{end}} header parameter "{{.ParamName}}" -------------
@@ -146,14 +153,14 @@ var {{.GoName}} {{.TypeDef}}
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for {{.ParamName}}, got %d", n))
         }
 {{if .Required}}
-        err = codegen.BindStringToObject(ctx.Param("{{.ParamName}}"), &{{.GoName}})
+        err = runtime.BindStringToObject(ctx.Param("{{.ParamName}}"), &{{.GoName}})
         if err != nil {
             return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
         }
         params.{{.GoName}} = {{.GoName}}
 {{else}}
         if found {
-            err = codegen.BindStringToObject(ctx.Param("{{.ParamName}}"), &{{.GoName}})
+            err = runtime.BindStringToObject(ctx.Param("{{.ParamName}}"), &{{.GoName}})
             if err != nil {
                 return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter {{.ParamName}}: %s", err))
             }
@@ -191,3 +198,4 @@ func Parse(t *template.Template) (*template.Template, error) {
 	}
 	return t, nil
 }
+

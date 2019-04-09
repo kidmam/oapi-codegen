@@ -186,13 +186,22 @@ func RefPathToGoType(refPath string) (string, error) {
 }
 
 // This function converts a swagger style path URI with parameters to a
-// Echo compatible path URI. We need to replace all instances of {param} with
-// :param
+// Echo compatible path URI. We need to replace all of Swagger parameters with
+// ":param". Valid input parameters are:
+//   {param}
+//   {param*}
+//   {.param}
+//   {.param*}
+//   {;param}
+//   {;param*}
+//   {?param}
+//   {?param*}
+
 func SwaggerUriToEchoUri(uri string) string {
-	exp, err := regexp.Compile("{([^{}]+)}")
-	// We don't use a dynamic regexp, so this should always succeed.
-	if err != nil {
-		panic(err)
-	}
-	return exp.ReplaceAllString(uri, ":$1")
+    exp, err := regexp.Compile("{[.;?]?([^{}*]+)\\*?}")
+    // We don't use a dynamic regexp, so this should always succeed.
+    if err != nil {
+        panic(err)
+    }
+    return exp.ReplaceAllString(uri, ":$1")
 }

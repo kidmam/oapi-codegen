@@ -6,7 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"fmt"
-	"github.com/deepmap/oapi-codegen/pkg/codegen"
+	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/labstack/echo/v4"
 	"net/http"
@@ -63,19 +63,20 @@ func (w *ServerInterfaceWrapper) FindPets(ctx echo.Context) error {
 	var params FindPetsParams
 	// ------------- Optional query parameter "tags" -------------
 	var Tags []string
+	if paramValue := ctx.QueryParam("tags"); paramValue != "" {
 
-	if ctx.QueryParam("tags") != "" {
-		err = codegen.BindStringToObject(ctx.QueryParam("tags"), &Tags)
+		err = runtime.BindStyledParameter("form", true, "tags", paramValue, &Tags)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter tags: %s", err))
 		}
 		params.Tags = &Tags
 	}
+
 	// ------------- Optional query parameter "limit" -------------
 	var Limit int32
+	if paramValue := ctx.QueryParam("limit"); paramValue != "" {
 
-	if ctx.QueryParam("limit") != "" {
-		err = codegen.BindStringToObject(ctx.QueryParam("limit"), &Limit)
+		err = runtime.BindStyledParameter("form", true, "limit", paramValue, &Limit)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
 		}
@@ -101,7 +102,8 @@ func (w *ServerInterfaceWrapper) DeletePet(ctx echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var Id int64
-	err = codegen.BindStringToObject(ctx.Param("id"), &Id)
+
+	err = runtime.BindStyledParameter("simple", false, "id", ctx.Param("id"), &Id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
@@ -116,7 +118,8 @@ func (w *ServerInterfaceWrapper) FindPetById(ctx echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var Id int64
-	err = codegen.BindStringToObject(ctx.Param("id"), &Id)
+
+	err = runtime.BindStyledParameter("simple", false, "id", ctx.Param("id"), &Id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
@@ -126,7 +129,7 @@ func (w *ServerInterfaceWrapper) FindPetById(ctx echo.Context) error {
 	return err
 }
 
-func RegisterHandlers(router codegen.EchoRouter, si ServerInterface) {
+func RegisterHandlers(router runtime.EchoRouter, si ServerInterface) {
 	wrapper := ServerInterfaceWrapper{
 		Handler: si,
 	}
@@ -192,3 +195,4 @@ func GetSwagger() (*openapi3.Swagger, error) {
 	}
 	return swagger, nil
 }
+
